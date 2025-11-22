@@ -12,7 +12,7 @@ os.environ["OPENAI_API_KEY"] = "tgp_v1_vW09RC97sOgr4CxmYdfF9OF9LlY_ED73B8QFP4gza
 
 llm_config = OpenAiCompatibleConfig(
     name="Together Model",
-    model_id="meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
+    model_id="",
     url="https://api.together.xyz/v1",
     default_generation_parameters=LlmGenerationConfig(
         max_tokens=512,
