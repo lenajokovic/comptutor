@@ -3,7 +3,12 @@
     "allow": [
       "Bash(test -f:*)",
       "Bash(.venv/Scripts/python.exe:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(pkill:*)",
+      "Bash(taskkill:*)",
+      "Bash(nul)",
+      "Bash(curl:*)",
+      "Bash(npm install:*)"
     ],
     "deny": [],
     "ask": []

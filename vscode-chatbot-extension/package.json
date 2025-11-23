@@ -1,0 +1,74 @@
+{
+  "name": "file-scanner-chatbot",
+  "displayName": "Teaching Agent",
+  "description": "An AI teaching assistant that helps you learn programming through Socratic questioning and code analysis",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "file-scanner-chatbot.openChat",
+        "title": "Teaching Agent: Open Chat"
+      },
+      {
+        "command": "file-scanner-chatbot.scanOpenFiles",
+        "title": "Teaching Agent: Scan All Open Files"
+      },
+      {
+        "command": "file-scanner-chatbot.startBackend",
+        "title": "Teaching Agent: Start Backend Server"
+      },
+      {
+        "command": "file-scanner-chatbot.stopBackend",
+        "title": "Teaching Agent: Stop Backend Server"
+      },
+      {
+        "command": "file-scanner-chatbot.toggleBackend",
+        "title": "Teaching Agent: Toggle Backend Server"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "chatbot-sidebar",
+          "title": "Teaching Agent",
+          "icon": "media/chatbot-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "chatbot-sidebar": [
+        {
+          "type": "webview",
+          "id": "chatbotView",
+          "name": "Chat"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "20.x",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "eslint": "^8.54.0",
+    "typescript": "^5.3.2"
+  }
+}
