@@ -129,6 +129,18 @@ class ChatbotViewProvider {
                     vscode.commands.executeCommand('file-scanner-chatbot.startBackend');
                     setTimeout(() => this.recheckConnection(), 3000);
                     break;
+                case 'saveConversation':
+                    await this._saveConversation(data.title);
+                    break;
+                case 'loadConversations':
+                    await this._loadConversationsList();
+                    break;
+                case 'loadConversation':
+                    await this._loadConversation(data.conversationId);
+                    break;
+                case 'deleteConversation':
+                    await this._deleteConversation(data.conversationId);
+                    break;
             }
         });
         // Send initial greeting
@@ -146,6 +158,10 @@ class ChatbotViewProvider {
             content: activeFile.content,
             languageId: activeFile.languageId
         } : undefined;
+        // Debug: Show when no file is active
+        if (!activeFile && (userMessage.toLowerCase().includes('current file') || userMessage.toLowerCase().includes('show me'))) {
+            this._sendSystemMessage('ℹ️ No file is currently active. Open a file in the editor first.');
+        }
         // If backend is connected, use the teaching agent
         if (this._backendConnected) {
             try {
@@ -223,6 +239,10 @@ class ChatbotViewProvider {
             const response = await this._makeRequest('/reset', 'POST');
             if (response.success) {
                 this._conversationHistory = [];
+                // Clear the UI
+                if (this._view) {
+                    this._view.webview.postMessage({ type: 'clearMessages' });
+                }
                 this._sendSystemMessage('🔄 Agent conversation reset');
                 this._sendBotMessage('Hi! Starting fresh. What would you like to learn?');
             }
@@ -232,6 +252,112 @@ class ChatbotViewProvider {
         }
         catch (error) {
             this._sendBotMessage('Error resetting agent');
+        }
+    }
+    async _saveConversation(title) {
+        if (!this._backendConnected) {
+            this._sendBotMessage('Backend not connected. Cannot save conversation.');
+            return;
+        }
+        try {
+            const activeFile = fileScanner_1.FileScanner.getActiveFile();
+            const fileContext = activeFile ? {
+                fileName: activeFile.fileName,
+                content: activeFile.content,
+                languageId: activeFile.languageId
+            } : undefined;
+            const response = await this._makeRequest('/save', 'POST', {
+                title: title || `Conversation ${new Date().toLocaleString()}`,
+                file_context: fileContext
+            });
+            if (response.success) {
+                this._sendSystemMessage(`💾 Conversation saved: ${response.conversation_id}`);
+            }
+            else {
+                this._sendBotMessage(`Failed to save: ${response.error}`);
+            }
+        }
+        catch (error) {
+            this._sendBotMessage('Error saving conversation');
+        }
+    }
+    async _loadConversationsList() {
+        if (!this._backendConnected) {
+            this._sendBotMessage('Backend not connected. Cannot load conversations.');
+            return;
+        }
+        try {
+            const response = await this._makeRequest('/conversations', 'GET');
+            if (response.success && this._view) {
+                this._view.webview.postMessage({
+                    type: 'showConversations',
+                    conversations: response.conversations
+                });
+            }
+            else {
+                this._sendBotMessage(`Failed to load conversations: ${response.error}`);
+            }
+        }
+        catch (error) {
+            this._sendBotMessage('Error loading conversations');
+        }
+    }
+    async _loadConversation(conversationId) {
+        if (!this._backendConnected) {
+            this._sendBotMessage('Backend not connected. Cannot load conversation.');
+            return;
+        }
+        try {
+            const response = await this._makeRequest(`/conversation/${conversationId}`, 'GET');
+            if (response.success && response.conversation && this._view) {
+                // Clear current conversation
+                this._conversationHistory = [];
+                this._view.webview.postMessage({ type: 'clearMessages' });
+                // Load messages from saved conversation
+                const conversation = response.conversation;
+                this._sendSystemMessage(`📂 Loaded: ${conversation.title}`);
+                if (conversation.file_context) {
+                    this._sendSystemMessage(`📄 File context: ${conversation.file_context.fileName}`);
+                }
+                // Display messages
+                for (const msg of conversation.messages) {
+                    if (msg.type.toLowerCase().includes('user')) {
+                        this._view.webview.postMessage({
+                            type: 'addUserMessage',
+                            message: msg.content
+                        });
+                    }
+                    else if (msg.content && !msg.type.toLowerCase().includes('tool')) {
+                        this._sendBotMessage(msg.content);
+                    }
+                }
+            }
+            else {
+                this._sendBotMessage(`Failed to load conversation: ${response.error}`);
+            }
+        }
+        catch (error) {
+            this._sendBotMessage('Error loading conversation');
+        }
+    }
+    async _deleteConversation(conversationId) {
+        if (!this._backendConnected) {
+            this._sendBotMessage('Backend not connected. Cannot delete conversation.');
+            return;
+        }
+        try {
+            const response = await this._makeRequest(`/conversation/${conversationId}`, 'DELETE');
+            if (response.success) {
+                this._sendSystemMessage('🗑️ Conversation deleted');
+                // Refresh the list
+                await this._loadConversationsList();
+            }
+            else {
+                this._sendBotMessage(`Failed to delete: ${response.error}`);
+            }
+        }
+        catch (error) {
+            this._sendBotMessage('Error deleting conversation');
         }
     }
     _getOpenFilesList() {
@@ -477,6 +603,72 @@ class ChatbotViewProvider {
             background-color: var(--vscode-button-background);
             width: 100%;
         }
+
+        #conversationsModal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background-color: var(--vscode-editor-background);
+            margin: 10% auto;
+            padding: 20px;
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 5px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+
+        .conversation-item {
+            padding: 10px;
+            margin: 5px 0;
+            background-color: var(--vscode-input-background);
+            border-radius: 3px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .conversation-item:hover {
+            background-color: var(--vscode-list-hoverBackground);
+        }
+
+        .conversation-info {
+            flex-grow: 1;
+        }
+
+        .conversation-title {
+            font-weight: bold;
+            margin-bottom: 3px;
+        }
+
+        .conversation-meta {
+            font-size: 0.85em;
+            opacity: 0.8;
+        }
+
+        .delete-btn {
+            padding: 5px 10px;
+            font-size: 0.8em;
+            background-color: var(--vscode-errorForeground);
+            color: white;
+            margin-left: 10px;
+        }
+
+        .close-modal {
+            float: right;
+            font-size: 1.5em;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -485,6 +677,8 @@ class ChatbotViewProvider {
             <button class="quick-action" onclick="sendQuickMessage('Show me the current file')">📄 Current File</button>
             <button class="quick-action" onclick="sendQuickMessage('Analyze my code')">🔍 Analyze Code</button>
             <button class="quick-action" onclick="sendQuickMessage('Help')">❓ Help</button>
+            <button class="quick-action" onclick="saveConversation()">💾 Save</button>
+            <button class="quick-action" onclick="loadConversations()">📂 Load</button>
             <button class="quick-action" onclick="reconnect()">🔄 Reconnect</button>
             <button class="quick-action reset-button" onclick="resetAgent()">🗑️ Reset</button>
         </div>
@@ -495,6 +689,15 @@ class ChatbotViewProvider {
         <div id="inputContainer">
             <input type="text" id="userInput" placeholder="Ask me about code or show me what you're working on..." />
             <button onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <!-- Conversations Modal -->
+    <div id="conversationsModal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeConversationsModal()">&times;</span>
+            <h3>Saved Conversations</h3>
+            <div id="conversationsList"></div>
         </div>
     </div>
 
@@ -577,6 +780,42 @@ class ChatbotViewProvider {
             addMessage('system', 'Starting backend server...');
         }
 
+        function saveConversation() {
+            const title = prompt('Enter a title for this conversation (optional):');
+            vscode.postMessage({
+                type: 'saveConversation',
+                title: title || undefined
+            });
+        }
+
+        function loadConversations() {
+            vscode.postMessage({
+                type: 'loadConversations'
+            });
+        }
+
+        function closeConversationsModal() {
+            document.getElementById('conversationsModal').style.display = 'none';
+        }
+
+        function loadConversation(conversationId) {
+            vscode.postMessage({
+                type: 'loadConversation',
+                conversationId: conversationId
+            });
+            closeConversationsModal();
+        }
+
+        function deleteConversation(event, conversationId) {
+            event.stopPropagation();
+            if (confirm('Delete this conversation?')) {
+                vscode.postMessage({
+                    type: 'deleteConversation',
+                    conversationId: conversationId
+                });
+            }
+        }
+
         userInput.addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 sendMessage();
@@ -595,6 +834,54 @@ class ChatbotViewProvider {
                 }
             } else if (message.type === 'systemMessage') {
                 addMessage('system', message.message);
+            } else if (message.type === 'clearMessages') {
+                // Clear all messages from the UI
+                messagesDiv.innerHTML = '';
+            } else if (message.type === 'showConversations') {
+                // Display conversations in modal
+                const conversationsList = document.getElementById('conversationsList');
+                conversationsList.innerHTML = '';
+
+                if (message.conversations && message.conversations.length > 0) {
+                    message.conversations.forEach(conv => {
+                        const item = document.createElement('div');
+                        item.className = 'conversation-item';
+                        item.onclick = () => loadConversation(conv.id);
+
+                        const info = document.createElement('div');
+                        info.className = 'conversation-info';
+
+                        const title = document.createElement('div');
+                        title.className = 'conversation-title';
+                        title.textContent = conv.title;
+
+                        const meta = document.createElement('div');
+                        meta.className = 'conversation-meta';
+                        const date = new Date(conv.timestamp);
+                        meta.textContent = date.toLocaleString() + ' • ' + conv.message_count + ' messages';
+                        if (conv.file_context) {
+                            meta.textContent += ' • ' + conv.file_context.fileName;
+                        }
+
+                        info.appendChild(title);
+                        info.appendChild(meta);
+
+                        const deleteBtn = document.createElement('button');
+                        deleteBtn.className = 'delete-btn';
+                        deleteBtn.textContent = '🗑️ Delete';
+                        deleteBtn.onclick = (e) => deleteConversation(e, conv.id);
+
+                        item.appendChild(info);
+                        item.appendChild(deleteBtn);
+                        conversationsList.appendChild(item);
+                    });
+                } else {
+                    conversationsList.innerHTML = '<p>No saved conversations yet.</p>';
+                }
+
+                document.getElementById('conversationsModal').style.display = 'block';
+            } else if (message.type === 'addUserMessage') {
+                addMessage('user', message.message);
             }
         });
     </script>

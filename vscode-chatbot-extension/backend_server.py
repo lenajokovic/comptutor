@@ -4,6 +4,9 @@ Provides REST API for VS Code extension to communicate with the agent
 """
 import os
 import warnings
+import json
+from datetime import datetime
+from pathlib import Path
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
@@ -30,6 +33,10 @@ agent_instance = None
 conversation_instance = None
 tools_registry = None
 message_index = -1
+
+# Conversation storage
+CONVERSATIONS_DIR = Path(__file__).parent / "saved_conversations"
+CONVERSATIONS_DIR.mkdir(exist_ok=True)
 
 
 def initialize_agent():
@@ -272,13 +279,171 @@ def run_code():
             }), 400
 
         tools = TeachingTools()
-        output, error = tools.run_code(code, test_input)
+        result = tools.run_code(code, test_input)
+
+        # Parse the result to separate output and error
+        has_error = 'ERROR:' in result
 
         return jsonify({
             'success': True,
-            'output': output,
-            'error': error,
-            'has_error': bool(error)
+            'result': result,
+            'has_error': has_error
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/save', methods=['POST'])
+def save_conversation():
+    """
+    Save the current conversation with context.
+
+    Request body:
+    {
+        "title": "optional title",
+        "file_context": {optional file context}
+    }
+    """
+    global conversation_instance, message_index
+
+    if conversation_instance is None:
+        return jsonify({
+            'success': False,
+            'error': 'No active conversation to save'
+        }), 400
+
+    try:
+        data = request.json or {}
+        title = data.get('title', f"Conversation {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        file_context = data.get('file_context', None)
+
+        # Get all messages
+        messages = conversation_instance.get_messages()
+
+        # Serialize messages
+        serialized_messages = []
+        for msg in messages:
+            msg_data = {
+                'type': str(msg.message_type) if hasattr(msg, 'message_type') else 'unknown',
+                'content': str(msg.content) if hasattr(msg, 'content') else '',
+            }
+            serialized_messages.append(msg_data)
+
+        # Create conversation data
+        conversation_id = datetime.now().strftime('%Y%m%d_%H%M%S')
+        conversation_data = {
+            'id': conversation_id,
+            'title': title,
+            'timestamp': datetime.now().isoformat(),
+            'file_context': file_context,
+            'messages': serialized_messages,
+            'message_count': len(serialized_messages)
+        }
+
+        # Save to file
+        save_path = CONVERSATIONS_DIR / f"{conversation_id}.json"
+        with open(save_path, 'w', encoding='utf-8') as f:
+            json.dump(conversation_data, f, indent=2, ensure_ascii=False)
+
+        return jsonify({
+            'success': True,
+            'conversation_id': conversation_id,
+            'message': f'Conversation saved: {title}'
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/conversations', methods=['GET'])
+def list_conversations():
+    """List all saved conversations."""
+    try:
+        conversations = []
+
+        for file_path in CONVERSATIONS_DIR.glob('*.json'):
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    conversations.append({
+                        'id': data.get('id'),
+                        'title': data.get('title'),
+                        'timestamp': data.get('timestamp'),
+                        'message_count': data.get('message_count', 0),
+                        'file_context': data.get('file_context')
+                    })
+            except Exception as e:
+                print(f"Error loading {file_path}: {e}")
+                continue
+
+        # Sort by timestamp (newest first)
+        conversations.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+
+        return jsonify({
+            'success': True,
+            'conversations': conversations
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/conversation/<conversation_id>', methods=['GET'])
+def get_conversation(conversation_id):
+    """Load a specific conversation."""
+    try:
+        file_path = CONVERSATIONS_DIR / f"{conversation_id}.json"
+
+        if not file_path.exists():
+            return jsonify({
+                'success': False,
+                'error': 'Conversation not found'
+            }), 404
+
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        return jsonify({
+            'success': True,
+            'conversation': data
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/conversation/<conversation_id>', methods=['DELETE'])
+def delete_conversation(conversation_id):
+    """Delete a saved conversation."""
+    try:
+        file_path = CONVERSATIONS_DIR / f"{conversation_id}.json"
+
+        if not file_path.exists():
+            return jsonify({
+                'success': False,
+                'error': 'Conversation not found'
+            }), 404
+
+        file_path.unlink()
+
+        return jsonify({
+            'success': True,
+            'message': 'Conversation deleted'
         })
 
     except Exception as e:
@@ -294,12 +459,16 @@ if __name__ == '__main__':
     print("=" * 60)
     print("Starting Flask server on http://localhost:5000")
     print("Endpoints:")
-    print("  POST /init      - Initialize agent")
-    print("  POST /chat      - Send message to agent")
-    print("  POST /reset     - Reset conversation")
-    print("  POST /analyze   - Analyze code")
-    print("  POST /run       - Execute code")
-    print("  GET  /health    - Health check")
+    print("  POST   /init                    - Initialize agent")
+    print("  POST   /chat                    - Send message to agent")
+    print("  POST   /reset                   - Reset conversation")
+    print("  POST   /analyze                 - Analyze code")
+    print("  POST   /run                     - Execute code")
+    print("  GET    /health                  - Health check")
+    print("  POST   /save                    - Save current conversation")
+    print("  GET    /conversations           - List saved conversations")
+    print("  GET    /conversation/<id>       - Load specific conversation")
+    print("  DELETE /conversation/<id>       - Delete conversation")
     print("=" * 60)
 
     # Initialize agent on startup
