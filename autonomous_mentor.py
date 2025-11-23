@@ -150,8 +150,6 @@ class TeachingTools:
 def create_teaching_agent():
     """Create and configure the autonomous teaching agent."""
 
-    os.environ["OPENAI_API_KEY"] = "tgp_v1_vW09RC97sOgr4CxmYdfF9OF9LlY_ED73B8QFP4gzaA8"
-
     llm_config = OpenAiCompatibleConfig(
         name="Together Model",
         model_id="meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
