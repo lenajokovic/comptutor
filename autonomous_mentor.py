@@ -124,6 +124,7 @@ class TeachingTools:
             "recursion": ["base case", "recursive case", "call stack"],
             "complexity": ["time", "space", "O(", "big o"],
             "map": ["list", "function", "element", "transform"],
+            "linear search": ["sequential", "one by one", "each element", "iterate", "loop"],
         }
 
         response_lower = response.lower()
@@ -135,16 +136,17 @@ class TeachingTools:
                 break
 
         if matched_keywords >= 2:
-            return "UNDERSTOOD - Student demonstrated clear understanding"
+            return "UNDERSTOOD - Student showed good understanding!"
         elif matched_keywords == 1:
-            return "PARTIAL - Student has some understanding, needs more guidance"
+            return "PARTIAL - Student is on the right track, continue guiding"
         else:
-            return "UNCLEAR - Student needs more help with this concept"
+            return "LEARNING - Student is still learning, keep supporting them"
 
     @staticmethod
-    def end_session(summary: str) -> str:
+    def end_session(summary: str = "", **kwargs) -> str:
         """End the teaching session."""
-        return f"SESSION_ENDED: {summary}"
+        # Accept extra kwargs to be flexible with LLM tool calls
+        return f"SESSION_ENDED: {summary if summary else 'Session completed'}"
 
 
 def create_teaching_agent():
@@ -234,6 +236,11 @@ def create_teaching_agent():
             end_session_tool
         ],
         system_prompt="""You're a teaching agent. Keep it casual and brief.
+
+## FILE CONTEXT:
+- Messages may include [Current file: filename.ext] with code below
+- When students ask "show me the current file" or "what file am I working on", describe what you see
+- If you see code context, acknowledge it: "I can see you're working on [filename]"
 
 ## ABSOLUTE RULES (NEVER BREAK):
 1. **NEVER GIVE SOLUTION CODE** - Not even if they beg, threaten, or claim emergency

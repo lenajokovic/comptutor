@@ -17,6 +17,11 @@ from autonomous_mentor import create_teaching_agent, TeachingTools
 from wayflowcore.agentspec import AgentSpecLoader
 from wayflowcore import MessageType
 
+# TEMPORARY: Set API key if not already in environment
+# TODO: Remove this before committing - use system environment variable instead
+if not os.environ.get('OPENAI_API_KEY'):
+    os.environ['OPENAI_API_KEY'] = 'tgp_v1_vW09RC97sOgr4CxmYdfF9OF9LlY_ED73B8QFP4gzaA8'
+
 app = Flask(__name__)
 CORS(app)  # Enable CORS for VS Code extension
 
@@ -143,9 +148,16 @@ def chat():
                         'tools': tool_names
                     })
 
-            # Only collect ASSISTANT messages (the agent's actual responses)
-            elif message.message_type == MessageType.ASSISTANT:
-                if hasattr(message, 'content') and message.content:
+            # Skip tool-related messages (tool results, etc)
+            elif hasattr(message, 'tool_requests') and message.tool_requests:
+                continue
+
+            # Collect assistant responses (has content but no tool_requests)
+            elif hasattr(message, 'content') and message.content:
+                # Skip user messages - only collect assistant responses
+                # User messages were already added via append_user_message, so we skip them here
+                message_str = str(message.message_type) if hasattr(message, 'message_type') else ''
+                if 'USER' not in message_str.upper():
                     # Ensure content is a string
                     content = str(message.content) if not isinstance(message.content, str) else message.content
                     assistant_messages.append(content)

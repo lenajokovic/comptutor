@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import sys; sys.path.insert(0, ''..''); from wayflowcore.agentspec import AgentSpecLoader; from autonomous_mentor import create_teaching_agent; agent = create_teaching_agent(); exe = AgentSpecLoader({}).load_component(agent); conv = exe.start_conversation(); conv.append_user_message(''test''); conv.execute(); msgs = conv.get_messages(); import inspect; print(''Message attributes:'', [attr for attr in dir(msgs[0]) if not attr.startswith(''_'')]); print(''Message type:'', type(msgs[0]).__name__); print(''Message type attr:'', msgs[0].message_type if hasattr(msgs[0], ''message_type'') else ''None'')\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -142,9 +142,13 @@ async function startBackend(context: vscode.ExtensionContext): Promise<void> {
 
         vscode.window.showInformationMessage('Starting Teaching Agent backend...');
 
-        // Start Python backend
+        // Start Python backend with environment variables
         backendProcess = child_process.spawn('python', [backendPath], {
-            cwd: path.dirname(backendPath)
+            cwd: path.dirname(backendPath),
+            env: {
+                ...process.env,  // Inherit all environment variables
+                OPENAI_API_KEY: process.env.OPENAI_API_KEY || ''
+            }
         });
 
         backendProcess.stdout?.on('data', (data) => {

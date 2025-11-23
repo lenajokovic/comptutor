@@ -129,9 +129,13 @@ async function startBackend(context) {
         // Try to find backend_server.py
         const backendPath = path.join(workspaceFolders[0].uri.fsPath, 'vscode-chatbot-extension', 'backend_server.py');
         vscode.window.showInformationMessage('Starting Teaching Agent backend...');
-        // Start Python backend
+        // Start Python backend with environment variables
         backendProcess = child_process.spawn('python', [backendPath], {
-            cwd: path.dirname(backendPath)
+            cwd: path.dirname(backendPath),
+            env: {
+                ...process.env, // Inherit all environment variables
+                OPENAI_API_KEY: process.env.OPENAI_API_KEY || ''
+            }
         });
         backendProcess.stdout?.on('data', (data) => {
             console.log(`Backend: ${data}`);
