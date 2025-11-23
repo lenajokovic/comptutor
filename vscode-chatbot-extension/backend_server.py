@@ -117,11 +117,13 @@ def chat():
         conversation_instance.execute()
         messages = conversation_instance.get_messages()
 
-        # Collect new messages
+        # Collect new messages - only get ASSISTANT messages for response
         responses = []
         tool_actions = []
+        assistant_messages = []
 
         for message in messages[message_index + 1:]:
+            # Track tool usage
             if message.message_type == MessageType.TOOL_REQUEST:
                 # Extract tool names - try different attribute names
                 tool_names = []
@@ -140,13 +142,29 @@ def chat():
                         'type': 'tool_use',
                         'tools': tool_names
                     })
-            elif hasattr(message, 'content') and message.content:
-                # Filter out tool-related internal messages
-                if not (hasattr(message, 'tool_requests') and message.tool_requests):
-                    responses.append({
-                        'type': 'text',
-                        'content': message.content
-                    })
+
+            # Only collect ASSISTANT messages (the agent's actual responses)
+            elif message.message_type == MessageType.ASSISTANT:
+                if hasattr(message, 'content') and message.content:
+                    # Ensure content is a string
+                    content = str(message.content) if not isinstance(message.content, str) else message.content
+                    assistant_messages.append(content)
+
+        # Consolidate all assistant messages into one response
+        if assistant_messages:
+            # Join multiple messages with double newline
+            consolidated_response = '\n\n'.join(assistant_messages)
+            responses.append({
+                'type': 'text',
+                'content': consolidated_response
+            })
+
+        # Debug logging
+        print(f"[DEBUG] Processed {len(messages[message_index + 1:])} new messages")
+        print(f"[DEBUG] Tool actions: {len(tool_actions)}")
+        print(f"[DEBUG] Assistant messages: {len(assistant_messages)}")
+        if responses:
+            print(f"[DEBUG] Sending response length: {len(responses[0]['content'])} chars")
 
         message_index = len(messages) - 1
 
@@ -158,9 +176,13 @@ def chat():
         })
 
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"ERROR in /chat endpoint:\n{error_details}")
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': str(e),
+            'details': 'Check server logs for full traceback'
         }), 500
 
 
